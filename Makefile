@@ -31,8 +31,8 @@ PREFIX = /usr/local
 BUILD_DIR = build
 SOURCE_DIR = src
 
-LDLIBS += `pkg-config --libs $(EXTERNALS)`
-CXXFLAGS += `pkg-config --cflags $(EXTERNALS)`
+LDLIBS += -lcurl
+#CXXFLAGS += -I/usr/include/x86_64-linux-gnu
 LDLIBS += -ldl
 
 #libov submodule:
