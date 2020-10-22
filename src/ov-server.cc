@@ -44,6 +44,8 @@ public:
   void set_roomname(const std::string& name) { roomname = name; };
 
 private:
+  void jittermeasurement_service();
+  std::thread jittermeasurement_thread;
   void announce_service();
   std::thread announce_thread;
   void ping_and_callerlist_service();
@@ -61,11 +63,14 @@ private:
 
   std::queue<latreport_t> latfifo;
   std::mutex latfifomtx;
+
+  double serverjitter;
 };
 
 ov_server_t::ov_server_t(int portno_, int prio)
     : portno(portno_), prio(prio), socket(secret), runsession(true),
-      secret(1234), roomname("lakeview"), lobbyurl("http://localhost")
+      secret(1234), roomname("lakeview"), lobbyurl("http://localhost"),
+      serverjitter(-1)
 {
   endpoints.resize(255);
   socket.set_timeout_usec(100000);
@@ -73,6 +78,8 @@ ov_server_t::ov_server_t(int portno_, int prio)
   logthread = std::thread(&ov_server_t::ping_and_callerlist_service, this);
   quitthread = std::thread(&ov_server_t::quitwatch, this);
   announce_thread = std::thread(&ov_server_t::announce_service, this);
+  jittermeasurement_thread =
+      std::thread(&ov_server_t::jittermeasurement_service, this);
 }
 
 ov_server_t::~ov_server_t()
@@ -137,8 +144,9 @@ void ov_server_t::announce_service()
       }
       // register at lobby:
       CURLcode res;
-      sprintf(cpost, "?port=%d&name=%s&pin=%d", portno, roomname.c_str(),
-              secret);
+      sprintf(cpost, "?port=%d&name=%s&pin=%d&srvjit=%1.1f", portno,
+              roomname.c_str(), secret, serverjitter);
+      serverjitter = 0;
       std::string url(lobbyurl);
       url += cpost;
       curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
@@ -295,6 +303,29 @@ void ov_server_t::srv()
     }
   }
   log(portno, "Multiplex service stopped");
+}
+
+double get_pingtime(std::chrono::high_resolution_clock::time_point& t1)
+{
+  std::chrono::high_resolution_clock::time_point t2(
+      std::chrono::high_resolution_clock::now());
+  std::chrono::duration<double> time_span =
+      std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
+  t1 = t2;
+  return (1000.0 * time_span.count());
+}
+
+void ov_server_t::jittermeasurement_service()
+{
+  set_thread_prio(prio-1);
+  std::chrono::high_resolution_clock::time_point t1;
+  get_pingtime(t1);
+  while(runsession) {
+    std::this_thread::sleep_for(std::chrono::microseconds(2000));
+    double t(get_pingtime(t1));
+    t -= 2.0;
+    serverjitter = std::max(t, serverjitter);
+  }
 }
 
 static void sighandler(int sig)
