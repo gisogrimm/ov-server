@@ -1,4 +1,4 @@
-name: Ubuntu make
+name: Ubuntu 16.04 make
 
 on:
   push:
@@ -10,5 +10,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: dependencies
+      run: sudo apt update &&
+           sudo apt install --assume-yes libcurl4-openssl-dev
     - name: make
       run: make
