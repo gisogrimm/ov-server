@@ -31,8 +31,6 @@ PREFIX = /usr/local
 BUILD_DIR = build
 SOURCE_DIR = src
 
-LDLIBS += -lasound
-
 LDLIBS += `pkg-config --libs $(EXTERNALS)`
 CXXFLAGS += `pkg-config --cflags $(EXTERNALS)`
 LDLIBS += -ldl
