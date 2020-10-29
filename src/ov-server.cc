@@ -32,7 +32,7 @@ static bool quit_app(false);
 
 class ov_server_t : public endpoint_list_t {
 public:
-  ov_server_t(int portno, int prio);
+  ov_server_t(int portno, int prio, const std::string& group_);
   ~ov_server_t();
   int portno;
   void srv();
@@ -65,12 +65,14 @@ private:
   std::mutex latfifomtx;
 
   double serverjitter;
+
+  std::string group;
 };
 
-ov_server_t::ov_server_t(int portno_, int prio)
+ov_server_t::ov_server_t(int portno_, int prio, const std::string& group_)
     : portno(portno_), prio(prio), socket(secret), runsession(true),
       secret(1234), roomname("lakeview"), lobbyurl("http://localhost"),
-      serverjitter(-1)
+      serverjitter(-1), group(group_)
 {
   endpoints.resize(255);
   socket.set_timeout_usec(100000);
@@ -144,8 +146,8 @@ void ov_server_t::announce_service()
       }
       // register at lobby:
       CURLcode res;
-      sprintf(cpost, "?port=%d&name=%s&pin=%d&srvjit=%1.1f", portno,
-              roomname.c_str(), secret, serverjitter);
+      sprintf(cpost, "?port=%d&name=%s&pin=%d&srvjit=%1.1f&grp=%s", portno,
+              roomname.c_str(), secret, serverjitter, group.c_str());
       serverjitter = 0;
       std::string url(lobbyurl);
       url += cpost;
@@ -317,7 +319,7 @@ double get_pingtime(std::chrono::high_resolution_clock::time_point& t1)
 
 void ov_server_t::jittermeasurement_service()
 {
-  set_thread_prio(prio-1);
+  set_thread_prio(prio - 1);
   std::chrono::high_resolution_clock::time_point t1;
   get_pingtime(t1);
   while(runsession) {
@@ -349,11 +351,12 @@ int main(int argc, char** argv)
     int prio(55);
     std::string roomname;
     std::string lobby("http://oldbox.orlandoviols.com");
-    const char* options = "p:qr:hvn:l:";
+    std::string group;
+    const char* options = "p:qr:hvn:l:g:";
     struct option long_options[] = {
         {"rtprio", 1, 0, 'r'},   {"quiet", 0, 0, 'q'}, {"port", 1, 0, 'p'},
         {"verbose", 0, 0, 'v'},  {"help", 0, 0, 'h'},  {"name", 1, 0, 'n'},
-        {"lobbyurl", 1, 0, 'l'}, {0, 0, 0, 0}};
+        {"lobbyurl", 1, 0, 'l'}, {"group", 1, 0, 'g'}, {0, 0, 0, 0}};
     int opt(0);
     int option_index(0);
     while((opt = getopt_long(argc, argv, options, long_options,
@@ -377,6 +380,9 @@ int main(int argc, char** argv)
       case 'n':
         roomname = optarg;
         break;
+      case 'g':
+        group = optarg;
+        break;
       case 'l':
         lobby = optarg;
         break;
@@ -390,7 +396,7 @@ int main(int argc, char** argv)
     seed += portno;
     // initialize random generator:
     srandom(seed);
-    ov_server_t rec(portno, prio);
+    ov_server_t rec(portno, prio, group);
     if(!roomname.empty())
       rec.set_roomname(roomname);
     if(!lobby.empty())
