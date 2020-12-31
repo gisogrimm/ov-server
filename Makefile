@@ -18,7 +18,7 @@ BUILD_OBJ = $(patsubst %,build/%.o,$(OBJ))
 
 
 CXXFLAGS = -Wall -Wno-deprecated-declarations -std=c++11 -pthread	\
--ggdb -fno-finite-math-only -fext-numeric-literals
+-ggdb -fno-finite-math-only
 
 CXXFLAGS += -DOVBOXVERSION="\"$(FULLVERSION)\""
 
@@ -56,9 +56,9 @@ else
 	ifeq ($(UNAME_S),Linux)
 		OSFLAG += -D LINUX
 		CXXFLAGS += -fext-numeric-literals
-		LDLIBS += -lasound
-		TASCARMODULS += ovheadtracker lightctl
-		TASCARDMXOBJECTS += termsetbaud.o serialport.o dmxdriver.o
+#		LDLIBS += -lasound
+#		TASCARMODULS += ovheadtracker lightctl
+#		TASCARDMXOBJECTS += termsetbaud.o serialport.o dmxdriver.o
 	endif
 	ifeq ($(UNAME_S),Darwin)
 		OSFLAG += -D OSX
