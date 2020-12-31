@@ -1,0 +1,15 @@
+name: MacOS make
+
+on:
+  push:
+
+jobs:
+  build:
+
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: dependencies
+      run: brew install pkgconfig coreutils
+    - name: make
+      run: make
