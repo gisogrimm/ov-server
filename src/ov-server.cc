@@ -54,10 +54,9 @@ private:
   std::thread quitthread;
   const int prio;
 
+  secret_t secret;
   ovbox_udpsocket_t socket;
   bool runsession;
-  struct sockaddr_in serv_addr;
-  secret_t secret;
   std::string roomname;
   std::string lobbyurl;
 
@@ -70,8 +69,8 @@ private:
 };
 
 ov_server_t::ov_server_t(int portno_, int prio, const std::string& group_)
-    : portno(portno_), prio(prio), socket(secret), runsession(true),
-      secret(1234), roomname("lakeview"), lobbyurl("http://localhost"),
+    : portno(portno_), prio(prio), secret(1234), socket(secret), runsession(true),
+      roomname("lakeview"), lobbyurl("http://localhost"),
       serverjitter(-1), group(group_)
 {
   endpoints.resize(255);
