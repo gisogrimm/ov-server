@@ -69,9 +69,10 @@ private:
 };
 
 ov_server_t::ov_server_t(int portno_, int prio, const std::string& group_)
-    : portno(portno_), prio(prio), secret(1234), socket(secret), runsession(true),
-      roomname("lakeview"), lobbyurl("http://localhost"),
-      serverjitter(-1), group(group_)
+    : portno(portno_), prio(prio), secret(1234), socket(secret),
+      runsession(true),
+      roomname(addr2str(getipaddr().sin_addr) + ":" + std::to_string(portno)),
+      lobbyurl("http://localhost"), serverjitter(-1), group(group_)
 {
   endpoints.resize(255);
   socket.set_timeout_usec(100000);
@@ -137,11 +138,13 @@ void ov_server_t::announce_service()
   char cpost[1024];
   while(runsession) {
     if(!cnt) {
+      bool roomempty(false);
       // if nobody is connected create a new pin:
       if(get_num_clients() == 0) {
         long int r(random());
         secret = r & 0xfffffff;
         socket.set_secret(secret);
+        roomempty = true;
       }
       // register at lobby:
       CURLcode res;
@@ -150,11 +153,16 @@ void ov_server_t::announce_service()
       serverjitter = 0;
       std::string url(lobbyurl);
       url += cpost;
+      if(roomempty)
+        // tell frontend that room is not in use:
+        url += "&empty=1";
       curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
       curl_easy_setopt(curl, CURLOPT_USERPWD, "room:room");
       curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
       curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
       res = curl_easy_perform(curl);
+      // if successful then reconnect in 6000 periods (10 minutes), otherwise
+      // retry in 500 periods (50 seconds):
       if(res == 0)
         cnt = 6000;
       else
@@ -234,7 +242,7 @@ void ov_server_t::srv()
     char* msg(socket.recv_sec_msg(buffer, n, un, rcallerid, destport, seq,
                                   sender_endpoint));
     if(msg) {
-      // retransmit data:
+      // regular destination port, forward data:
       if(destport > MAXSPECIALPORT) {
         for(stage_device_id_t ep = 0; ep != MAXEP; ++ep) {
           if((ep != rcallerid) && (endpoints[ep].timeout > 0) &&
@@ -250,6 +258,7 @@ void ov_server_t::srv()
         // this is a control message:
         switch(destport) {
         case PORT_SEQREP:
+          // sequence error report:
           if(un == sizeof(sequence_t) + sizeof(stage_device_id_t)) {
             stage_device_id_t sender_cid(*(sequence_t*)msg);
             sequence_t seq(*(sequence_t*)(&(msg[sizeof(stage_device_id_t)])));
@@ -260,6 +269,7 @@ void ov_server_t::srv()
           }
           break;
         case PORT_PEERLATREP:
+          // peer-to-peer latency report:
           if(un == 6 * sizeof(double)) {
             double* data((double*)msg);
             {
@@ -279,17 +289,20 @@ void ov_server_t::srv()
           }
           break;
         case PORT_PONG: {
+          // ping response:
           double tms(get_pingtime(msg, un));
           if(tms > 0)
             cid_setpingtime(rcallerid, tms);
         } break;
         case PORT_SETLOCALIP:
+          // receive local IP address of peer:
           if(un == sizeof(endpoint_t)) {
             endpoint_t* localep((endpoint_t*)msg);
             cid_setlocalip(rcallerid, *localep);
           }
           break;
         case PORT_REGISTER:
+          // register new client:
           // in the register packet the sequence is used to transmit
           // peer2peer flag:
           std::string rver("---");
