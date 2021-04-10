@@ -10,8 +10,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Fetch git tags
+      run: git fetch --unshallow --tags
+    - name: Install submodules
+      run: git submodule update --init --recursive
     - name: dependencies
       run: sudo apt update &&
-           sudo apt install --assume-yes libcurl4-openssl-dev
+           sudo apt install --assume-yes libcurl4-openssl-dev nlohmann-json3-dev
     - name: make
       run: make

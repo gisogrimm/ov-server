@@ -9,7 +9,11 @@ jobs:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v2
+    - name: Fetch git tags
+      run: git fetch --unshallow --tags
+    - name: Install submodules
+      run: git submodule update --init --recursive
     - name: dependencies
-      run: brew install pkgconfig coreutils
+      run: brew install pkgconfig coreutils nlohmann-json
     - name: make
       run: make
