@@ -1,3 +1,9 @@
+#include <arpa/inet.h>
+//#include <net/if.h>
+//#include <string.h>
+//#include <sys/ioctl.h>
+//#include <sys/socket.h>
+
 #include "callerlist.h"
 #include "common.h"
 #include "errmsg.h"
@@ -195,7 +201,7 @@ void ov_server_t::ping_and_callerlist_service()
   while(runsession) {
     std::this_thread::sleep_for(std::chrono::milliseconds(PINGPERIODMS));
     // send ping message to all connected endpoints:
-    for(stage_device_id_t cid = 0; cid != MAXEP; ++cid) {
+    for(stage_device_id_t cid = 0; cid != MAX_STAGE_ID; ++cid) {
       if(endpoints[cid].timeout) {
         // endpoint is connected
         socket.send_ping(cid, endpoints[cid].ep);
@@ -204,9 +210,9 @@ void ov_server_t::ping_and_callerlist_service()
     if(!participantannouncementcnt) {
       // announcement of connected participants to all clients:
       participantannouncementcnt = PARTICIPANTANNOUNCEPERIOD;
-      for(stage_device_id_t cid = 0; cid != MAXEP; ++cid) {
+      for(stage_device_id_t cid = 0; cid != MAX_STAGE_ID; ++cid) {
         if(endpoints[cid].timeout) {
-          for(stage_device_id_t epl = 0; epl != MAXEP; ++epl) {
+          for(stage_device_id_t epl = 0; epl != MAX_STAGE_ID; ++epl) {
             if(endpoints[epl].timeout) {
               // endpoint is alive, send info of epl to cid:
               size_t n = packmsg(buffer, BUFSIZE, secret, epl, PORT_LISTCID,
@@ -244,13 +250,13 @@ void ov_server_t::srv()
     if(msg) {
       // regular destination port, forward data:
       if(destport > MAXSPECIALPORT) {
-        for(stage_device_id_t ep = 0; ep != MAXEP; ++ep) {
+        for(stage_device_id_t ep = 0; ep != MAX_STAGE_ID; ++ep) {
           if((ep != rcallerid) && (endpoints[ep].timeout > 0) &&
              (!(endpoints[ep].mode & B_DONOTSEND)) &&
              ((!(endpoints[ep].mode & B_PEER2PEER)) ||
               (!(endpoints[rcallerid].mode & B_PEER2PEER))) &&
              ((!(endpoints[ep].mode & B_DOWNMIXONLY)) ||
-              (rcallerid == MAXEP - 1))) {
+              (rcallerid == MAX_STAGE_ID - 1))) {
             socket.send(buffer, n, endpoints[ep].ep);
           }
         }
