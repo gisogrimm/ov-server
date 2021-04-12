@@ -75,7 +75,7 @@ private:
 };
 
 ov_server_t::ov_server_t(int portno_, int prio, const std::string& group_)
-    : portno(portno_), prio(prio), secret(1234), socket(secret),
+  : portno(portno_), prio(prio), secret(1234), socket(secret, STAGE_ID_SERVER),
       runsession(true),
       roomname(addr2str(getipaddr().sin_addr) + ":" + std::to_string(portno)),
       lobbyurl("http://localhost"), serverjitter(-1), group(group_)
@@ -204,7 +204,8 @@ void ov_server_t::ping_and_callerlist_service()
     for(stage_device_id_t cid = 0; cid != MAX_STAGE_ID; ++cid) {
       if(endpoints[cid].timeout) {
         // endpoint is connected
-        socket.send_ping(cid, endpoints[cid].ep);
+        //socket.send_ping(cid, endpoints[cid].ep);
+	socket.send_ping(endpoints[cid].ep);
       }
     }
     if(!participantannouncementcnt) {

@@ -85,6 +85,8 @@ build: build/.directory
 
 binaries: $(BUILD_BINARIES)
 
+$(BUILD_BINARIES): libov/build/libovserver.a
+
 build/%: src/%.cc
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@
 
