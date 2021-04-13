@@ -1,8 +1,4 @@
 #include <arpa/inet.h>
-//#include <net/if.h>
-//#include <string.h>
-//#include <sys/ioctl.h>
-//#include <sys/socket.h>
 
 #include "callerlist.h"
 #include "common.h"
@@ -75,8 +71,8 @@ private:
 };
 
 ov_server_t::ov_server_t(int portno_, int prio, const std::string& group_)
-  : portno(portno_), prio(prio), secret(1234), socket(secret, STAGE_ID_SERVER),
-      runsession(true),
+    : portno(portno_), prio(prio), secret(1234),
+      socket(secret, STAGE_ID_SERVER), runsession(true),
       roomname(addr2str(getipaddr().sin_addr) + ":" + std::to_string(portno)),
       lobbyurl("http://localhost"), serverjitter(-1), group(group_)
 {
@@ -204,8 +200,8 @@ void ov_server_t::ping_and_callerlist_service()
     for(stage_device_id_t cid = 0; cid != MAX_STAGE_ID; ++cid) {
       if(endpoints[cid].timeout) {
         // endpoint is connected
-        //socket.send_ping(cid, endpoints[cid].ep);
-	socket.send_ping(endpoints[cid].ep);
+        // socket.send_ping(cid, endpoints[cid].ep);
+        socket.send_ping(endpoints[cid].ep);
       }
     }
     if(!participantannouncementcnt) {
@@ -295,6 +291,14 @@ void ov_server_t::srv()
             log(portno, ctmp);
           }
           break;
+        case PORT_PING_SRV:
+        case PORT_PONG_SRV:
+          if(un >= sizeof(stage_device_id_t)) {
+	    stage_device_id_t* pdestid((stage_device_id_t*)msg);
+	    if( *pdestid < MAX_STAGE_ID )
+	      socket.send(buffer, n, endpoints[*pdestid].ep);
+	  }
+	  break;
         case PORT_PONG: {
           // ping response:
           double tms(get_pingtime(msg, un));
