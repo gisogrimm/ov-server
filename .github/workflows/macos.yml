@@ -9,9 +9,11 @@ jobs:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v2
-    - name: submodules
+    - name: Fetch git tags
+      run: git fetch --unshallow --tags
+    - name: Install submodules
       run: git submodule update --init --recursive
     - name: dependencies
-      run: brew install pkgconfig glibmm jack liblo libsndfile gtkmm3 eigen boost gsl fftw libsamplerate cpprestsdk nlohmann-json openssl coreutils libsoundio xerces-c  pkgconfig coreutils
+      run: brew install pkgconfig coreutils nlohmann-json
     - name: make
       run: make

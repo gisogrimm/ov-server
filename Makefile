@@ -1,10 +1,6 @@
 all: lib build binaries
 
-export VERSION:=$(shell grep -m 1 VERSION libov/Makefile|sed 's/^.*=//g')
-export MINORVERSION:=$(shell git rev-list --count HEAD)
-export COMMIT:=$(shell git rev-parse --short HEAD)
-export COMMITMOD:=$(shell test -z "`git status --porcelain -uno`" || echo "-modified")
-export FULLVERSION:=$(VERSION).$(MINORVERSION)-$(COMMIT)$(COMMITMOD)
+export FULLVERSION:=$(shell cd libov && ./get_version.sh)
 
 showver:
 	echo $(VERSION)
@@ -26,7 +22,7 @@ ifeq "$(ARCH)" "x86_64"
 CXXFLAGS += -msse -msse2 -mfpmath=sse -ffast-math
 endif
 
-CPPFLAGS = -std=c++11
+CPPFLAGS = -std=c++17
 PREFIX = /usr/local
 BUILD_DIR = build
 SOURCE_DIR = src
@@ -37,7 +33,7 @@ LDLIBS += -ldl
 
 #libov submodule:
 CXXFLAGS += -Ilibov/src
-LDLIBS += -lov
+LDLIBS += -lovserver
 LDFLAGS += -Llibov/build
 
 HEADER := $(wildcard src/*.h) $(wildcard libov/src/*.h)
@@ -56,16 +52,10 @@ else
 	ifeq ($(UNAME_S),Linux)
 		OSFLAG += -D LINUX
 		CXXFLAGS += -fext-numeric-literals
-#		LDLIBS += -lasound
-#		TASCARMODULS += ovheadtracker lightctl
-#		TASCARDMXOBJECTS += termsetbaud.o serialport.o dmxdriver.o
 	endif
 	ifeq ($(UNAME_S),Darwin)
 		OSFLAG += -D OSX
 		LDFLAGS += -framework IOKit -framework CoreFoundation
-#LDLIBS += -lfftw3f -lsamplerate -lc++ -lcpprest -lcrypto -lssl -lboost_filesystem
-#		CXXFLAGS += -I$(OPENSSL_ROOT)/include/openssl -I$(OPENSSL_ROOT)/include
-#		LDFLAGS += -L$(OPENSSL_ROOT)/lib -L$(OPENSSL_ROOT)/lib
 	endif
 		UNAME_P := $(shell uname -p)
 	ifeq ($(UNAME_P),x86_64)
@@ -82,7 +72,7 @@ endif
 CXXFLAGS += $(OSFLAG)
 
 lib: libov/Makefile
-	$(MAKE) -C libov
+	$(MAKE) -C libov build libovserver
 
 libov/Makefile:
 	git submodule init
@@ -96,12 +86,10 @@ build: build/.directory
 
 binaries: $(BUILD_BINARIES)
 
-build/ov-client: libov/build/libov.a
+$(BUILD_BINARIES): libov/build/libovserver.a
 
 build/%: src/%.cc
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@
-
-build/ov-client: $(BUILD_OBJ)
 
 build/%.o: src/%.cc $(HEADER)
 	$(CXX) $(CXXFLAGS) -c $< -o $@

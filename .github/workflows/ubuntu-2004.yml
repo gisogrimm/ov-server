@@ -10,10 +10,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: submodules
+    - name: Fetch git tags
+      run: git fetch --unshallow --tags
+    - name: Install submodules
       run: git submodule update --init --recursive
     - name: dependencies
       run: sudo apt update &&
-           sudo apt install --assume-yes liblo-dev libcurl4-openssl-dev build-essential libasound2-dev libeigen3-dev libfftw3-dev libfftw3-double3 libfftw3-single3 libgsl-dev libjack-jackd2-dev libltc-dev libmatio-dev libsndfile1-dev libsamplerate0-dev libboost-all-dev libcpprest-dev nlohmann-json3-dev libsoundio-dev libxerces-c-dev
+           sudo apt install --assume-yes libcurl4-openssl-dev nlohmann-json3-dev
     - name: make
       run: make
