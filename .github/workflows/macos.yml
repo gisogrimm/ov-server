@@ -10,7 +10,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: submodules
-      run: git submodules update --init --recursive
+      run: git submodule update --init --recursive
     - name: dependencies
       run: brew install pkgconfig coreutils
     - name: make
