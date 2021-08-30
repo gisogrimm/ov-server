@@ -107,7 +107,7 @@ void ov_server_t::announce_new_connection(stage_device_id_t cid,
   log(portno,
       "new connection for " + std::to_string(cid) + " from " + ep2str(ep.ep) +
           " in " + ((ep.mode & B_PEER2PEER) ? "peer-to-peer" : "server") +
-          "-mode" + ((ep.mode & B_DOWNMIXONLY) ? " downmixonly" : "") +
+          "-mode" + ((ep.mode & B_RECEIVEDOWNMIX) ? " receivedownmix" : "") +
           ((ep.mode & B_DONOTSEND) ? " donotsend" : "") + " v" + ep.version);
 }
 
@@ -251,8 +251,8 @@ void ov_server_t::srv()
              (!(endpoints[ep].mode & B_DONOTSEND)) &&
              ((!(endpoints[ep].mode & B_PEER2PEER)) ||
               (!(endpoints[rcallerid].mode & B_PEER2PEER))) &&
-             ((endpoints[ep].mode & B_DOWNMIXONLY) ==
-              (endpoints[rcallerid].mode & B_SESSIONMIXER))) {
+             ((endpoints[ep].mode & B_RECEIVEDOWNMIX) ==
+              (endpoints[rcallerid].mode & B_SENDDOWNMIX))) {
             socket.send(buffer, n, endpoints[ep].ep);
           }
         }
