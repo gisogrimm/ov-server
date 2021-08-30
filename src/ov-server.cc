@@ -251,8 +251,8 @@ void ov_server_t::srv()
              (!(endpoints[ep].mode & B_DONOTSEND)) &&
              ((!(endpoints[ep].mode & B_PEER2PEER)) ||
               (!(endpoints[rcallerid].mode & B_PEER2PEER))) &&
-             ((endpoints[ep].mode & B_RECEIVEDOWNMIX) ==
-              (endpoints[rcallerid].mode & B_SENDDOWNMIX))) {
+             ((bool)(endpoints[ep].mode & B_RECEIVEDOWNMIX) ==
+              (bool)(endpoints[rcallerid].mode & B_SENDDOWNMIX))) {
             socket.send(buffer, n, endpoints[ep].ep);
           }
         }
