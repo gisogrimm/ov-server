@@ -108,6 +108,7 @@ void ov_server_t::announce_new_connection(stage_device_id_t cid,
       "new connection for " + std::to_string(cid) + " from " + ep2str(ep.ep) +
           " in " + ((ep.mode & B_PEER2PEER) ? "peer-to-peer" : "server") +
           "-mode" + ((ep.mode & B_RECEIVEDOWNMIX) ? " receivedownmix" : "") +
+          ((ep.mode & B_SENDDOWNMIX) ? " senddownmix" : "") +
           ((ep.mode & B_DONOTSEND) ? " donotsend" : "") + " v" + ep.version);
 }
 
