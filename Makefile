@@ -7,13 +7,16 @@ showver:
 
 BINARIES = ov-server
 
+OBJ = ovtcpsocket
+
 EXTERNALS = libcurl
 
 BUILD_BINARIES = $(patsubst %,build/%,$(BINARIES))
 BUILD_OBJ = $(patsubst %,build/%.o,$(OBJ))
 
+binaries: $(BUILD_OBJ)
 
-CXXFLAGS = -Wall -Wno-deprecated-declarations -std=c++11 -pthread	\
+CXXFLAGS = -Wall -Wno-deprecated-declarations -std=c++17 -pthread	\
 -ggdb -fno-finite-math-only
 
 CXXFLAGS += -DOVBOXVERSION="\"$(FULLVERSION)\""
