@@ -2,6 +2,7 @@
 #define OVTCPSOCKET_H
 
 #include "udpsocket.h"
+#include <thread>
 
 class ovtcpsocket_t {
 public:
@@ -18,6 +19,24 @@ public:
    */
   ~ovtcpsocket_t();
   /**
+   * Set the receive timeout.
+   *
+   * @param usec Timeout in Microseconds, or zero to set to blocking
+   * mode (default)
+   */
+  void set_timeout_usec(int usec);
+  /**
+   * Set priority for all packets (SO_PRIORITY)
+   *
+   * @param priority Priority value, 0 to 6.
+   */
+  void set_netpriority(int priority);
+  /**
+   * Set flags for low loss, low latency, low jitter, assured
+   * bandwidth, end-to-end service according to RFC2598
+   */
+  void set_expedited_forwarding_PHB();
+  /**
    * Bind the socket to a port.
    *
    * @param port Port number to bind the port to.
@@ -33,10 +52,16 @@ public:
    */
   void close();
 
+  virtual void handleconnection(int fd);
+
 private:
+  void acceptor();
   int sockfd = -1;
   endpoint_t serv_addr;
   bool isopen = false;
+  std::atomic_bool run_server = true;
+  std::thread mainthread;
+  std::vector<std::thread> handlethreads;
 
 public:
   /**

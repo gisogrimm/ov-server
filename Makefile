@@ -5,7 +5,7 @@ export FULLVERSION:=$(shell cd libov && ./get_version.sh)
 showver:
 	echo $(VERSION)
 
-BINARIES = ov-server
+BINARIES = ov-server testtcpsrv
 
 OBJ = ovtcpsocket
 
@@ -89,7 +89,7 @@ build: build/.directory
 
 binaries: $(BUILD_BINARIES)
 
-$(BUILD_BINARIES): libov/build/libovserver.a
+$(BUILD_BINARIES): libov/build/libovserver.a $(BUILD_OBJ)
 
 build/%: src/%.cc
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@
