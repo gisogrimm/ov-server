@@ -1,4 +1,4 @@
-all: build binaries
+all: lib build binaries
 
 export FULLVERSION:=$(shell cd libov && ./get_version.sh)
 
@@ -9,15 +9,12 @@ BINARIES = ov-server
 
 OBJ = ovtcpsocket
 
-LIBOVOBJ = ov_types errmsg common udpsocket callerlist ov_tools MACAddressUtility
-
 EXTERNALS = libcurl
 
 BUILD_BINARIES = $(patsubst %,build/%,$(BINARIES))
 BUILD_OBJ = $(patsubst %,build/%.o,$(OBJ))
-BUILD_OBJ_LIBOV = $(patsubst %,build/%.o,$(LIBOVOBJ))
 
-binaries: $(BUILD_OBJ_LIBOV) $(BUILD_OBJ)
+binaries: $(BUILD_OBJ)
 
 CXXFLAGS = -Wall -Wno-deprecated-declarations -std=c++17 -pthread	\
 -ggdb -fno-finite-math-only
@@ -39,8 +36,8 @@ LDLIBS += -ldl
 
 #libov submodule:
 CXXFLAGS += -Ilibov/src
-#LDLIBS += -lovserver
-#LDFLAGS += -Llibov/build
+LDLIBS += -lovserver
+LDFLAGS += -Llibov/build
 
 HEADER := $(wildcard src/*.h) $(wildcard libov/src/*.h)
 
@@ -98,12 +95,6 @@ build/%: src/%.cc
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@
 
 build/%.o: src/%.cc $(HEADER)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-build/%: libov/src/%.cc
-	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@
-
-build/%.o: libov/src/%.cc $(HEADER)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clangformat:
