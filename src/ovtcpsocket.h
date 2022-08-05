@@ -23,8 +23,9 @@ public:
    *
    * @param usec Timeout in Microseconds, or zero to set to blocking
    * mode (default)
+   * @param fd File descriptor, or -1 to use primary socket
    */
-  void set_timeout_usec(int usec);
+  void set_timeout_usec(int usec, int fd = -1);
   /**
    * Set priority for all packets (SO_PRIORITY)
    *
@@ -47,12 +48,16 @@ public:
    * of type ErrMsg with an appropriate error message is thrown.
    */
   port_t bind(port_t port, bool loopback = false);
+  int connect(endpoint_t ep);
   /**
    * Close the socket.
    */
   void close();
+  int nbread(int fd, uint8_t* buf, size_t cnt);
+  ssize_t send(const char* buf, size_t len);
 
-  virtual void handleconnection(int fd);
+
+  virtual void handleconnection(int fd, endpoint_t ep);
 
 private:
   void acceptor();
@@ -61,7 +66,7 @@ private:
   bool isopen = false;
   std::atomic_bool run_server = true;
   std::thread mainthread;
-  std::vector<std::thread> handlethreads;
+  std::map<int, std::thread> handlethreads;
 
 public:
   /**

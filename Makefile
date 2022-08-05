@@ -5,7 +5,7 @@ export FULLVERSION:=$(shell cd libov && ./get_version.sh)
 showver:
 	echo $(VERSION)
 
-BINARIES = ov-server testtcpsrv
+BINARIES = ov-server testtcpsrv testtcpclient
 
 OBJ = ovtcpsocket
 

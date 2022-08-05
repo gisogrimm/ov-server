@@ -9,6 +9,12 @@ ovtcpsocket_t::ovtcpsocket_t()
   if(sockfd < 0)
     throw ErrMsg("Opening socket failed: ", errno);
   set_netpriority(6);
+  set_timeout_usec(10000);
+}
+
+ssize_t ovtcpsocket_t::send(const char* buf, size_t len)
+{
+  return 0;
 }
 
 ovtcpsocket_t::~ovtcpsocket_t()
@@ -17,16 +23,18 @@ ovtcpsocket_t::~ovtcpsocket_t()
   if(mainthread.joinable())
     mainthread.join();
   for(auto& thr : handlethreads)
-    if(thr.joinable())
-      thr.join();
+    if(thr.second.joinable())
+      thr.second.join();
+}
+
+int ovtcpsocket_t::connect(endpoint_t ep)
+{
+  return ::connect(sockfd, (const struct sockaddr *)(&ep), sizeof(ep) );
 }
 
 port_t ovtcpsocket_t::bind(port_t port, bool loopback)
 {
   int optval = 1;
-  // setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const void*)&optval,
-  //           sizeof(int));
-  // windows (cast):
   setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&optval,
              sizeof(int));
 
@@ -65,42 +73,73 @@ void ovtcpsocket_t::close()
 
 void ovtcpsocket_t::acceptor()
 {
-  DEBUG("waiting");
+  std::cerr << "server ready to accept connections.\n";
   while(run_server) {
-    int clientfd = accept(sockfd, NULL, NULL);
+    endpoint_t ep;
+    unsigned int len = sizeof(ep);
+    int clientfd = accept(sockfd, (struct sockaddr*)(&ep), &len);
     if(clientfd >= 0) {
-      handlethreads.push_back(
-          std::thread(&ovtcpsocket_t::handleconnection, this, clientfd));
+      if(handlethreads.count(clientfd)) {
+        if(handlethreads[clientfd].joinable())
+          handlethreads[clientfd].join();
+      }
+      handlethreads[clientfd] =
+          std::thread(&ovtcpsocket_t::handleconnection, this, clientfd, ep);
     }
   }
-  DEBUG("server closed");
+  std::cerr << "server closed\n";
 }
 
-void ovtcpsocket_t::handleconnection(int fd)
+int ovtcpsocket_t::nbread(int fd, uint8_t* buf, size_t cnt)
 {
-  DEBUG(fd);
-  DEBUG("connection established");
-  char c = '\0';
-  while(run_server) {
-    int cnt = read(fd, &c, 1);
-    if(cnt == -1) {
+  int rcnt = 0;
+  while(run_server && (cnt > 0)) {
+    int lrcnt = read(fd, buf, cnt);
+    if(lrcnt < 0) {
       if(!((errno == EAGAIN) || (errno == EWOULDBLOCK)))
-        break;
+        return lrcnt;
     } else {
-      if(cnt > 0) {
-        std::cerr << c;
-      }else{
-        break;
+      if(lrcnt > 0) {
+        cnt -= lrcnt;
+        buf += lrcnt;
+        rcnt += lrcnt;
+      } else {
+        return -2;
       }
     }
   }
-  DEBUG("closing");
-  DEBUG(fd);
+  return rcnt;
+}
+
+
+void ovtcpsocket_t::handleconnection(int fd, endpoint_t ep)
+{
+  std::cerr << "connection from " << ep2str(ep) << " established\n";
+  uint8_t buf[1<<16];
+  while(run_server) {
+    uint16_t size = 0;
+    int cnt = nbread(fd, (uint8_t*)(&size), sizeof(size));
+    if(cnt < 0)
+      break;
+    if(cnt == sizeof(size)) {
+      // read package:
+      DEBUG(size);
+      cnt = nbread(fd, buf, size);
+      DEBUG(cnt);
+      buf[cnt] = 0;
+      if( cnt == size ){
+        std::cerr << buf;
+      }
+    }
+  }
+  std::cerr << "closing connection from " << ep2str(ep) << "\n";
   ::close(fd);
 }
 
-void ovtcpsocket_t::set_timeout_usec(int usec)
+void ovtcpsocket_t::set_timeout_usec(int usec, int fd)
 {
+  if(fd == -1)
+    fd = sockfd;
   struct timeval tv;
   tv.tv_sec = 0;
   tv.tv_usec = usec;
