@@ -13,7 +13,7 @@ public:
    * creation failed, an exception of type ErrMsg with an appropriate
    * error message is thrown.
    */
-  ovtcpsocket_t();
+  ovtcpsocket_t(port_t udpresponseport = 0);
   /**
    * Deconstructor. This will close the socket.
    */
@@ -48,16 +48,16 @@ public:
    * of type ErrMsg with an appropriate error message is thrown.
    */
   port_t bind(port_t port, bool loopback = false);
-  int connect(endpoint_t ep);
+  int connect(endpoint_t ep, port_t udpresponseport);
   /**
    * Close the socket.
    */
   void close();
   int nbread(int fd, uint8_t* buf, size_t cnt);
   int nbwrite(int fd, uint8_t* buf, size_t cnt);
-  ssize_t send(const char* buf, size_t len);
+  ssize_t send(int fd, const char* buf, size_t len);
 
-  virtual void handleconnection(int fd, endpoint_t ep);
+  void handleconnection(int fd, endpoint_t ep);
 
   port_t get_port() const { return targetport; };
 
@@ -69,17 +69,9 @@ private:
   std::atomic_bool run_server = true;
   std::thread mainthread;
   std::map<int, std::thread> handlethreads;
+  std::thread clienthandler;
   port_t targetport = 0;
-
-public:
-  /**
-   * Number of bytes sent through this socket.
-   */
-  std::atomic_size_t tx_bytes = 0u;
-  /**
-   * Number of bytes received through this socket.
-   */
-  std::atomic_size_t rx_bytes = 0u;
+  port_t udpresponseport = 0;
 };
 
 #endif
