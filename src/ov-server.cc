@@ -248,6 +248,7 @@ void ov_server_t::srv()
     if(msg) {
       // regular destination port, forward data:
       if(destport > MAXSPECIALPORT) {
+        std::cerr << "r";
         for(stage_device_id_t ep = 0; ep != MAX_STAGE_ID; ++ep) {
           if((ep != rcallerid) && (endpoints[ep].timeout > 0) &&
              (!(endpoints[ep].mode & B_DONOTSEND)) &&
@@ -259,6 +260,7 @@ void ov_server_t::srv()
           }
         }
       } else {
+        std::cerr << "R";
         // this is a control message:
         switch(destport) {
         case PORT_SEQREP:
