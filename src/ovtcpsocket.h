@@ -54,10 +54,12 @@ public:
    */
   void close();
   int nbread(int fd, uint8_t* buf, size_t cnt);
+  int nbwrite(int fd, uint8_t* buf, size_t cnt);
   ssize_t send(const char* buf, size_t len);
 
-
   virtual void handleconnection(int fd, endpoint_t ep);
+
+  port_t get_port() const { return targetport; };
 
 private:
   void acceptor();
@@ -67,6 +69,7 @@ private:
   std::atomic_bool run_server = true;
   std::thread mainthread;
   std::map<int, std::thread> handlethreads;
+  port_t targetport = 0;
 
 public:
   /**

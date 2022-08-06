@@ -12,11 +12,6 @@ ovtcpsocket_t::ovtcpsocket_t()
   set_timeout_usec(10000);
 }
 
-ssize_t ovtcpsocket_t::send(const char* buf, size_t len)
-{
-  return 0;
-}
-
 ovtcpsocket_t::~ovtcpsocket_t()
 {
   close();
@@ -29,7 +24,7 @@ ovtcpsocket_t::~ovtcpsocket_t()
 
 int ovtcpsocket_t::connect(endpoint_t ep)
 {
-  return ::connect(sockfd, (const struct sockaddr *)(&ep), sizeof(ep) );
+  return ::connect(sockfd, (const struct sockaddr*)(&ep), sizeof(ep));
 }
 
 port_t ovtcpsocket_t::bind(port_t port, bool loopback)
@@ -56,7 +51,8 @@ port_t ovtcpsocket_t::bind(port_t port, bool loopback)
   mainthread = std::thread(&ovtcpsocket_t::acceptor, this);
   socklen_t addrlen(sizeof(endpoint_t));
   getsockname(sockfd, (struct sockaddr*)&my_addr, &addrlen);
-  return ntohs(my_addr.sin_port);
+  targetport = ntohs(my_addr.sin_port);
+  return targetport;
 }
 
 void ovtcpsocket_t::close()
@@ -111,24 +107,64 @@ int ovtcpsocket_t::nbread(int fd, uint8_t* buf, size_t cnt)
   return rcnt;
 }
 
+int ovtcpsocket_t::nbwrite(int fd, uint8_t* buf, size_t cnt)
+{
+  int rcnt = 0;
+  while(run_server && (cnt > 0)) {
+    int lrcnt = write(fd, buf, cnt);
+    if(lrcnt < 0) {
+      if(!((errno == EAGAIN) || (errno == EWOULDBLOCK)))
+        return lrcnt;
+    } else {
+      if(lrcnt > 0) {
+        cnt -= lrcnt;
+        buf += lrcnt;
+        rcnt += lrcnt;
+      } else {
+        return -2;
+      }
+    }
+  }
+  return rcnt;
+}
+
+ssize_t ovtcpsocket_t::send(const char* buf, size_t len)
+{
+  if(len >= 1 << 16)
+    return -3;
+  char csize[2];
+  csize[0] = len & 0xff;
+  csize[1] = (len >> 8) & 0xff;
+  auto wcnt = nbwrite(sockfd, (uint8_t*)csize, 2);
+  if(wcnt < 2)
+    return -4;
+  return nbwrite(sockfd, (uint8_t*)buf, len);
+}
 
 void ovtcpsocket_t::handleconnection(int fd, endpoint_t ep)
 {
   std::cerr << "connection from " << ep2str(ep) << " established\n";
-  uint8_t buf[1<<16];
+  udpsocket_t udp;
+  port_t udpport = udp.bind(0);
+  DEBUG(udpport);
+  udp.set_destination("localhost");
+  port_t targetport = get_port();
+  DEBUG(targetport);
+  uint8_t buf[1 << 16];
   while(run_server) {
-    uint16_t size = 0;
-    int cnt = nbread(fd, (uint8_t*)(&size), sizeof(size));
+    char csize[2] = {0, 0};
+    int cnt = nbread(fd, (uint8_t*)csize, 2);
     if(cnt < 0)
       break;
+    uint16_t size = csize[0] + (csize[1] << 8);
     if(cnt == sizeof(size)) {
       // read package:
       DEBUG(size);
       cnt = nbread(fd, buf, size);
       DEBUG(cnt);
       buf[cnt] = 0;
-      if( cnt == size ){
-        std::cerr << buf;
+      if(cnt == size) {
+        udp.send( (char*)buf, cnt, targetport );
       }
     }
   }
