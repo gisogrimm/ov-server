@@ -7,7 +7,7 @@ showver:
 
 BINARIES = ov-server testtcpsrv testtcpclient
 
-OBJ = ovtcpsocket
+OBJ = 
 
 EXTERNALS = libcurl
 

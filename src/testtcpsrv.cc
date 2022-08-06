@@ -14,7 +14,6 @@ int main(int argc, char** argv)
   signal(SIGTERM, &sighandler);
   signal(SIGINT, &sighandler);
   ovtcpsocket_t tcp;
-  tcp.set_timeout_usec(10000);
   tcp.bind(9877);
   while(!quit_app)
     std::this_thread::sleep_for(std::chrono::milliseconds(100));

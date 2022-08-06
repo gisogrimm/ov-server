@@ -3,6 +3,7 @@
 #include "callerlist.h"
 #include "common.h"
 #include "errmsg.h"
+#include "ovtcpsocket.h"
 #include "udpsocket.h"
 #include <condition_variable>
 #include <queue>
@@ -424,6 +425,8 @@ int main(int argc, char** argv)
       rec.set_roomname(roomname);
     if(!lobby.empty())
       rec.set_lobbyurl(lobby);
+    ovtcpsocket_t tcp;
+    tcp.bind(portno);
     rec.srv();
     curl_easy_cleanup(curl);
     curl_global_cleanup();
