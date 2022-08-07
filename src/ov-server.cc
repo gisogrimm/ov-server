@@ -366,6 +366,7 @@ int main(int argc, char** argv)
   signal(SIGABRT, &sighandler);
   signal(SIGTERM, &sighandler);
   signal(SIGINT, &sighandler);
+  signal(SIGPIPE, SIG_IGN);
   try {
     curl_global_init(CURL_GLOBAL_DEFAULT);
     curl = curl_easy_init();
