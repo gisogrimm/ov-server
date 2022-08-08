@@ -152,8 +152,9 @@ void ov_server_t::announce_service()
       }
       // register at lobby:
       CURLcode res;
-      sprintf(cpost, "?port=%d&name=%s&pin=%d&srvjit=%1.1f&grp=%s", portno,
-              roomname.c_str(), secret, serverjitter, group.c_str());
+      sprintf(cpost, "?port=%d&name=%s&pin=%d&srvjit=%1.1f&grp=%s&version=%s",
+              portno, roomname.c_str(), secret, serverjitter, group.c_str(),
+              OVBOXVERSION);
       serverjitter = 0;
       std::string url(lobbyurl);
       url += cpost;
