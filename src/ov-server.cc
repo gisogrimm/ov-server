@@ -362,6 +362,7 @@ static void sighandler(int sig)
 
 int main(int argc, char** argv)
 {
+  std::cout << "ov-server " << OVBOXVERSION << std::endl;
   std::chrono::high_resolution_clock::time_point start(
       std::chrono::high_resolution_clock::now());
   signal(SIGABRT, &sighandler);
