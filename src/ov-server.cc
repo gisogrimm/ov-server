@@ -30,6 +30,9 @@ public:
 // period time of participant list announcement, in ping periods:
 #define PARTICIPANTANNOUNCEPERIOD 20
 
+// Ping period in Milliseconds:
+#define PINGPERIODMS 50
+
 static bool quit_app(false);
 
 class ov_server_t : public endpoint_list_t {
