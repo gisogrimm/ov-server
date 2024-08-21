@@ -15,6 +15,64 @@
 #include <curl/curl.h>
 
 CURL* curl;
+std::mutex curlmtx;
+
+namespace webCURL {
+
+  struct MemoryStruct {
+    char* memory;
+    size_t size;
+  };
+
+  static size_t WriteMemoryCallback(void* contents, size_t size, size_t nmemb,
+                                    void* userp)
+  {
+    size_t realsize = size * nmemb;
+    struct MemoryStruct* mem = (struct MemoryStruct*)userp;
+    char* ptr = (char*)realloc(mem->memory, mem->size + realsize + 1);
+    if(ptr == NULL) {
+      /* out of memory! */
+      printf("not enough memory (realloc returned NULL)\n");
+      return 0;
+    }
+    mem->memory = ptr;
+    memcpy(&(mem->memory[mem->size]), contents, realsize);
+    mem->size += realsize;
+    mem->memory[mem->size] = 0;
+    return realsize;
+  }
+
+  CURLcode curl_get_http_response(const std::string& url,
+                                  const std::string& userpwd, std::string& retv)
+  {
+    // std::string retv;
+    struct webCURL::MemoryStruct chunk;
+    chunk.memory =
+        (char*)malloc(1); /* will be grown as needed by the realloc above */
+    chunk.size = 0;       /* no data at this point */
+    std::lock_guard<std::mutex> lock(curlmtx);
+    curl_easy_reset(curl);
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    if(userpwd.size())
+      curl_easy_setopt(curl, CURLOPT_USERPWD, userpwd.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, webCURL::WriteMemoryCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&chunk);
+    curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+    // curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+    // curl_easy_setopt(curl, CURLOPT_POSTFIELDS, curlstrdevice.c_str());
+    CURLcode res = curl_easy_perform(curl);
+    if(res == CURLE_OK) {
+      retv.clear();
+      retv.insert(0, chunk.memory, chunk.size);
+    } else {
+      DEBUG(curl_easy_strerror(res));
+    }
+    free(chunk.memory);
+    return res;
+  }
+
+} // namespace webCURL
 
 class latreport_t {
 public:
@@ -33,6 +91,11 @@ public:
 
 // Ping period in Milliseconds:
 #define PINGPERIODMS 50
+
+// Announcement period time upon success, in ms:
+#define ANNOUNCEMENTPERIOD_SUCCESS_MS 300000
+
+#define ANNOUNCEMENTPERIOD_FAILURE_MS 50000
 
 static bool quit_app(false);
 
@@ -93,8 +156,15 @@ ov_server_t::ov_server_t(int portno_, int prio, const std::string& group_)
 ov_server_t::~ov_server_t()
 {
   runsession = false;
-  logthread.join();
-  quitthread.join();
+  if(jittermeasurement_thread.joinable())
+    jittermeasurement_thread.join();
+  if(logthread.joinable())
+    logthread.join();
+  if(quitthread.joinable())
+    quitthread.join();
+  if(announce_thread.joinable())
+    announce_thread.join();
+  socket.close();
 }
 
 void ov_server_t::quitwatch()
@@ -102,7 +172,6 @@ void ov_server_t::quitwatch()
   while(!quit_app)
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   runsession = false;
-  socket.close();
 }
 
 void ov_server_t::announce_new_connection(stage_device_id_t cid,
@@ -140,73 +209,90 @@ void ov_server_t::announce_latency(stage_device_id_t cid, double lmin,
 // This function announces the room service to the lobby:
 void ov_server_t::announce_service()
 {
-  // Room announcement counter:
-  uint32_t announcementCounter(0);
-  // The URL part containing the HTTP GET request:
-  char httpGetRequest[1024];
-  while(runsession) {
-    if(!announcementCounter) {
-      // Check if the room is empty:
-      bool isRoomEmpty(false);
-      // If nobody is connected, create a new pin:
-      if(get_num_clients() == 0) {
-        long int randomNumber(random());
-        secret = randomNumber & 0xfffffff;
-        socket.set_secret(secret);
-        isRoomEmpty = true;
+  try {
+    // Room announcement counter:
+    uint32_t announcementCounter(0);
+    // The URL part containing the HTTP GET request:
+    char httpGetRequest[1024];
+    while(runsession) {
+      if(!announcementCounter) {
+        // Check if the room is empty:
+        bool isRoomEmpty(false);
+        // If nobody is connected, create a new pin:
+        if(get_num_clients() == 0) {
+          long int randomNumber(random());
+          secret = randomNumber & 0xfffffff;
+          socket.set_secret(secret);
+          isRoomEmpty = true;
+        }
+        // Register at the lobby:
+        sprintf(httpGetRequest,
+                "?port=%d&name=%s&pin=%d&srvjit=%1.1f&grp=%s&version=%s",
+                portno, roomname.c_str(), secret, serverjitter, group.c_str(),
+                OVBOXVERSION);
+        serverjitter = 0;
+        std::string url(lobbyurl);
+        url += httpGetRequest;
+        if(isRoomEmpty) {
+          // Tell the frontend that the room is not in use:
+          url += "&empty=1";
+        }
+        std::string resp;
+        CURLcode response =
+            webCURL::curl_get_http_response(url, "room:room", resp);
+        // If the request is successful, reconnect in 6000 periods (10 minutes),
+        // otherwise retry in 500 periods (50 seconds):
+        if(response == CURLE_OK) {
+          if(resp.size() == 0) {
+            // expect empty response
+            announcementCounter = ANNOUNCEMENTPERIOD_SUCCESS_MS / PINGPERIODMS;
+          } else {
+            // non-empty response, probably invalid server or similar:
+            std::cerr << "Error: invalid response from server:\n"
+                      << resp << std::endl;
+            announcementCounter = ANNOUNCEMENTPERIOD_FAILURE_MS / PINGPERIODMS;
+            std::cerr << "Request to " << url << " failed (invalid response)."
+                      << std::endl;
+          }
+        } else {
+          announcementCounter = ANNOUNCEMENTPERIOD_FAILURE_MS / PINGPERIODMS;
+          std::cerr << "Request to " << url
+                    << " failed: " << curl_easy_strerror(response) << std::endl;
+        }
       }
-      // Register at the lobby:
-      sprintf(httpGetRequest,
-              "?port=%d&name=%s&pin=%d&srvjit=%1.1f&grp=%s&version=%s", portno,
-              roomname.c_str(), secret, serverjitter, group.c_str(),
-              OVBOXVERSION);
-      serverjitter = 0;
-      std::string url(lobbyurl);
-      url += httpGetRequest;
-      if(isRoomEmpty) {
-        // Tell the frontend that the room is not in use:
-        url += "&empty=1";
-      }
-      curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-      curl_easy_setopt(curl, CURLOPT_USERPWD, "room:room");
-      curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-      curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-      CURLcode response = curl_easy_perform(curl);
-      // If the request is successful, reconnect in 6000 periods (10 minutes),
-      // otherwise retry in 500 periods (50 seconds):
-      if(response == CURLE_OK) {
-        announcementCounter = 6000;
-      } else {
-        announcementCounter = 500;
-        std::cerr << "Request to " << url
-                  << " failed: " << curl_easy_strerror(response) << std::endl;
+      --announcementCounter;
+      std::this_thread::sleep_for(std::chrono::milliseconds(PINGPERIODMS));
+      while(!latfifo.empty()) {
+        latreport_t latencyReport;
+        {
+          std::lock_guard<std::mutex> lockGuard(latfifomtx);
+          latencyReport = latfifo.front();
+          latfifo.pop();
+        }
+        // Provide a latency report:
+        sprintf(httpGetRequest,
+                "?latreport=%d&src=%d&dest=%d&lat=%1.1f&jit=%1.1f", portno,
+                latencyReport.src, latencyReport.dest, latencyReport.tmean,
+                latencyReport.jitter);
+        std::string url(lobbyurl);
+        url += httpGetRequest;
+        {
+          std::lock_guard<std::mutex> lk(curlmtx);
+          curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+          curl_easy_setopt(curl, CURLOPT_USERPWD, "room:room");
+          curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+          CURLcode response = curl_easy_perform(curl);
+          if(response != CURLE_OK) {
+            std::cerr << "Request to " << url
+                      << " failed: " << curl_easy_strerror(response)
+                      << std::endl;
+          }
+        }
       }
     }
-    --announcementCounter;
-    std::this_thread::sleep_for(std::chrono::milliseconds(PINGPERIODMS));
-    while(!latfifo.empty()) {
-      latreport_t latencyReport;
-      {
-        std::lock_guard<std::mutex> lockGuard(latfifomtx);
-        latencyReport = latfifo.front();
-        latfifo.pop();
-      }
-      // Register at the lobby:
-      sprintf(httpGetRequest,
-              "?latreport=%d&src=%d&dest=%d&lat=%1.1f&jit=%1.1f", portno,
-              latencyReport.src, latencyReport.dest, latencyReport.tmean,
-              latencyReport.jitter);
-      std::string url(lobbyurl);
-      url += httpGetRequest;
-      curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-      curl_easy_setopt(curl, CURLOPT_USERPWD, "room:room");
-      curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-      CURLcode response = curl_easy_perform(curl);
-      if(response != CURLE_OK) {
-        std::cerr << "Request to " << url
-                  << " failed: " << curl_easy_strerror(response) << std::endl;
-      }
-    }
+  }
+  catch(const std::exception& e) {
+    DEBUG(e.what());
   }
 }
 
@@ -390,9 +476,12 @@ int main(int argc, char** argv)
   signal(SIGPIPE, SIG_IGN);
   try {
     curl_global_init(CURL_GLOBAL_DEFAULT);
-    curl = curl_easy_init();
-    if(!curl)
-      throw ErrMsg("Unable to initialize curl.");
+    {
+      std::lock_guard<std::mutex> lk(curlmtx);
+      curl = curl_easy_init();
+      if(!curl)
+        throw ErrMsg("Unable to initialize curl.");
+    }
     int portno(0);
     int prio(55);
     std::string roomname;
@@ -442,16 +531,21 @@ int main(int argc, char** argv)
     seed += portno;
     // initialize random generator:
     srandom(seed);
-    ov_server_t rec(portno, prio, group);
-    if(!roomname.empty())
-      rec.set_roomname(roomname);
-    if(!lobby.empty())
-      rec.set_lobbyurl(lobby);
-    ovtcpsocket_t tcp;
-    tcp.bind(portno);
-    rec.srv();
-    curl_easy_cleanup(curl);
-    curl_global_cleanup();
+    {
+      ov_server_t rec(portno, prio, group);
+      if(!roomname.empty())
+        rec.set_roomname(roomname);
+      if(!lobby.empty())
+        rec.set_lobbyurl(lobby);
+      ovtcpsocket_t tcp;
+      tcp.bind(portno);
+      rec.srv();
+    }
+    {
+      std::lock_guard<std::mutex> lk(curlmtx);
+      curl_easy_cleanup(curl);
+      curl_global_cleanup();
+    }
   }
   catch(const std::exception& e) {
     std::cerr << e.what() << std::endl;
