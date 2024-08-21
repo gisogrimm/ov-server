@@ -3,6 +3,7 @@
 #include "callerlist.h"
 #include "common.h"
 #include "errmsg.h"
+#include "ovtcpsocket.h"
 #include "udpsocket.h"
 #include <condition_variable>
 #include <queue>
@@ -155,8 +156,10 @@ void ov_server_t::announce_service()
         isRoomEmpty = true;
       }
       // Register at the lobby:
-      sprintf(httpGetRequest, "?port=%d&name=%s&pin=%d&srvjit=%1.1f&grp=%s",
-              portno, roomname.c_str(), secret, serverjitter, group.c_str());
+      sprintf(httpGetRequest,
+              "?port=%d&name=%s&pin=%d&srvjit=%1.1f&grp=%s&version=%s", portno,
+              roomname.c_str(), secret, serverjitter, group.c_str(),
+              OVBOXVERSION);
       serverjitter = 0;
       std::string url(lobbyurl);
       url += httpGetRequest;
@@ -378,11 +381,13 @@ static void sighandler(int sig)
 
 int main(int argc, char** argv)
 {
+  std::cout << "ov-server " << OVBOXVERSION << std::endl;
   std::chrono::high_resolution_clock::time_point start(
       std::chrono::high_resolution_clock::now());
   signal(SIGABRT, &sighandler);
   signal(SIGTERM, &sighandler);
   signal(SIGINT, &sighandler);
+  signal(SIGPIPE, SIG_IGN);
   try {
     curl_global_init(CURL_GLOBAL_DEFAULT);
     curl = curl_easy_init();
@@ -442,6 +447,8 @@ int main(int argc, char** argv)
       rec.set_roomname(roomname);
     if(!lobby.empty())
       rec.set_lobbyurl(lobby);
+    ovtcpsocket_t tcp;
+    tcp.bind(portno);
     rec.srv();
     curl_easy_cleanup(curl);
     curl_global_cleanup();

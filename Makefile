@@ -5,15 +5,18 @@ export FULLVERSION:=$(shell cd libov && ./get_version.sh)
 showver:
 	echo $(VERSION)
 
-BINARIES = ov-server
+BINARIES = ov-server testtcpsrv testtcpclient
+
+OBJ = 
 
 EXTERNALS = libcurl
 
 BUILD_BINARIES = $(patsubst %,build/%,$(BINARIES))
 BUILD_OBJ = $(patsubst %,build/%.o,$(OBJ))
 
+binaries: $(BUILD_OBJ)
 
-CXXFLAGS = -Wall -Wno-deprecated-declarations -std=c++11 -pthread	\
+CXXFLAGS = -Wall -Wno-deprecated-declarations -std=c++17 -pthread	\
 -ggdb -fno-finite-math-only
 
 CXXFLAGS += -DOVBOXVERSION="\"$(FULLVERSION)\""
@@ -86,7 +89,7 @@ build: build/.directory
 
 binaries: $(BUILD_BINARIES)
 
-$(BUILD_BINARIES): libov/build/libovserver.a
+$(BUILD_BINARIES): libov/build/libovserver.a $(BUILD_OBJ)
 
 build/%: src/%.cc
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@
