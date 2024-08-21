@@ -9,7 +9,7 @@ BINARIES = ov-server testtcpsrv testtcpclient
 
 OBJ = 
 
-EXTERNALS = libcurl
+EXTERNALS = libcurl xerces-c
 
 BUILD_BINARIES = $(patsubst %,build/%,$(BINARIES))
 BUILD_OBJ = $(patsubst %,build/%.o,$(OBJ))
