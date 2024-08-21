@@ -9,7 +9,7 @@ BINARIES = ov-server testtcpsrv testtcpclient
 
 OBJ = 
 
-EXTERNALS = libcurl xerces-c
+EXTERNALS = jack liblo sndfile libcurl gsl samplerate fftw3f xerces-c
 
 BUILD_BINARIES = $(patsubst %,build/%,$(BINARIES))
 BUILD_OBJ = $(patsubst %,build/%.o,$(OBJ))
