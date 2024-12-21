@@ -487,11 +487,23 @@ int main(int argc, char** argv)
     std::string roomname;
     std::string lobby("http://oldbox.orlandoviols.com");
     std::string group;
+    bool usetcp = false;
     const char* options = "p:qr:hvn:l:g:";
-    struct option long_options[] = {
-        {"rtprio", 1, 0, 'r'},   {"quiet", 0, 0, 'q'}, {"port", 1, 0, 'p'},
-        {"verbose", 0, 0, 'v'},  {"help", 0, 0, 'h'},  {"name", 1, 0, 'n'},
-        {"lobbyurl", 1, 0, 'l'}, {"group", 1, 0, 'g'}, {0, 0, 0, 0}};
+    struct option long_options[] = {{"rtprio", 1, 0, 'r'},
+                                    {"quiet", 0, 0, 'q'},
+                                    {"port", 1, 0, 'p'},
+                                    {"verbose", 0, 0, 'v'},
+                                    {"help", 0, 0, 'h'},
+                                    {"name", 1, 0, 'n'},
+                                    {"lobbyurl", 1, 0, 'l'},
+                                    {"group", 1, 0, 'g'},
+                                    {
+                                        "tcp",
+                                        0,
+                                        0,
+                                        't',
+                                    },
+                                    {0, 0, 0, 0}};
     int opt(0);
     int option_index(0);
     while((opt = getopt_long(argc, argv, options, long_options,
@@ -521,6 +533,9 @@ int main(int argc, char** argv)
       case 'l':
         lobby = optarg;
         break;
+      case 't':
+        usetcp = true;
+        break;
       }
     }
     std::chrono::high_resolution_clock::time_point end(
@@ -538,7 +553,9 @@ int main(int argc, char** argv)
       if(!lobby.empty())
         rec.set_lobbyurl(lobby);
       ovtcpsocket_t tcp;
-      tcp.bind(portno);
+      if(usetcp) {
+        tcp.bind(portno);
+      }
       rec.srv();
     }
     {
