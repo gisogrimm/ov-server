@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 
+#include "../tascar/libtascar/include/tscconfig.h"
 #include "callerlist.h"
 #include "common.h"
 #include "errmsg.h"
@@ -66,6 +67,7 @@ namespace webCURL {
       retv.clear();
       retv.insert(0, chunk.memory, chunk.size);
     } else {
+      DEBUG(url);
       DEBUG(curl_easy_strerror(res));
     }
     free(chunk.memory);
@@ -121,18 +123,18 @@ private:
   std::thread logthread;
   void quitwatch();
   std::thread quitthread;
-  const int prio;
+  const int prio = 0;
 
-  secret_t secret;
+  secret_t secret = 1234;
   ovbox_udpsocket_t socket;
-  bool runsession;
-  std::string roomname;
-  std::string lobbyurl;
+  bool runsession = true;
+  std::string roomname = "";
+  std::string lobbyurl = "http://localhost";
 
   std::queue<latreport_t> latfifo;
   std::mutex latfifomtx;
 
-  double serverjitter;
+  double serverjitter = -1.0;
 
   std::string group;
 };
@@ -143,7 +145,9 @@ ov_server_t::ov_server_t(int portno_, int prio, const std::string& group_)
       roomname(addr2str(getipaddr().sin_addr) + ":" + std::to_string(portno)),
       lobbyurl("http://localhost"), serverjitter(-1), group(group_)
 {
-  endpoints.resize(255);
+  endpoints.resize(255, ep_desc_t());
+  // for(auto& ep:endpoints)
+  //  memset(&ep,0,sizeof(ep));
   socket.set_timeout_usec(100000);
   portno = socket.bind(portno);
   logthread = std::thread(&ov_server_t::ping_and_callerlist_service, this);
@@ -318,16 +322,34 @@ void ov_server_t::ping_and_callerlist_service()
         if(endpoints[cid].timeout) {
           for(stage_device_id_t epl = 0; epl != MAX_STAGE_ID; ++epl) {
             if(endpoints[epl].timeout) {
-              // endpoint is alive, send info of epl to cid:
-              size_t n = packmsg(buffer, BUFSIZE, secret, epl, PORT_LISTCID,
-                                 endpoints[epl].mode,
-                                 (const char*)(&(endpoints[epl].ep)),
-                                 sizeof(endpoints[epl].ep));
-              socket.send(buffer, n, endpoints[cid].ep);
-              n = packmsg(buffer, BUFSIZE, secret, epl, PORT_SETLOCALIP, 0,
-                          (const char*)(&(endpoints[epl].localep)),
-                          sizeof(endpoints[epl].localep));
-              socket.send(buffer, n, endpoints[cid].ep);
+              // source (epl) and target (cid) endpoint are alive, send info of
+              // epl to cid:
+              {
+                // update registry:
+                size_t n = packmsg(buffer, BUFSIZE, secret, epl, PORT_LISTCID,
+                                   endpoints[epl].mode,
+                                   (const char*)(&(endpoints[epl].ep)),
+                                   sizeof(endpoints[epl].ep));
+                socket.send(buffer, n, endpoints[cid].ep);
+              }
+              {
+                // update local IP address:
+                size_t n =
+                    packmsg(buffer, BUFSIZE, secret, epl, PORT_SETLOCALIP, 0,
+                            (const char*)(&(endpoints[epl].localep)),
+                            sizeof(endpoints[epl].localep));
+                socket.send(buffer, n, endpoints[cid].ep);
+              }
+              {
+                // update public key, if available:
+                if(endpoints[epl].has_pubkey) {
+                  //DEBUG(bin2base64((uint8_t*)(endpoints[epl].pubkey),crypto_box_PUBLICKEYBYTES));
+                  size_t n = packmsg(buffer, BUFSIZE, secret, epl, PORT_PUBKEY,
+                                     0, (const char*)(endpoints[epl].pubkey),
+                                     crypto_box_PUBLICKEYBYTES);
+                  socket.send(buffer, n, endpoints[cid].ep);
+                }
+              }
             }
           }
         }
@@ -346,7 +368,9 @@ void ov_server_t::srv()
   stage_device_id_t rcallerid;
   port_t destport;
   while(runsession) {
+    // n is the packed message lenght:
     size_t n(BUFSIZE);
+    // un is the unpacked message length:
     size_t un(BUFSIZE);
     sequence_t seq(0);
     char* msg(socket.recv_sec_msg(buffer, n, un, rcallerid, destport, seq,
@@ -408,18 +432,18 @@ void ov_server_t::srv()
           break;
         case PORT_PONG: {
           // ping response:
-          double tms(get_pingtime(msg, un));
+          double tms(socket.get_pingtime(msg, un));
           if(tms > 0)
             cid_setpingtime(rcallerid, tms);
         } break;
         case PORT_SETLOCALIP:
           // receive local IP address of peer:
           if(un == sizeof(endpoint_t)) {
-            endpoint_t* localep((endpoint_t*)msg);
-            cid_setlocalip(rcallerid, *localep);
+            // endpoint_t* localep((endpoint_t*)msg);
+            cid_setlocalip(rcallerid, msg);
           }
           break;
-        case PORT_REGISTER:
+        case PORT_REGISTER: {
           // register new client:
           // in the register packet the sequence is used to transmit
           // peer2peer flag:
@@ -428,8 +452,11 @@ void ov_server_t::srv()
             msg[un - 1] = 0;
             rver = msg;
           }
-          cid_register(rcallerid, sender_endpoint, seq, rver);
-          break;
+          cid_register(rcallerid, (char*)(&sender_endpoint), seq, rver);
+        } break;
+        case PORT_PUBKEY: {
+          cid_set_pubkey(rcallerid, msg, un);
+        } break;
         }
       }
     }
@@ -467,6 +494,7 @@ static void sighandler(int sig)
 
 int main(int argc, char** argv)
 {
+  TASCAR::console_log_show(true);
   std::cout << "ov-server " << OVBOXVERSION << std::endl;
   std::chrono::high_resolution_clock::time_point start(
       std::chrono::high_resolution_clock::now());
