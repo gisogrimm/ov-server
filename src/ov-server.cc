@@ -111,8 +111,16 @@ public:
   void announce_connection_lost(stage_device_id_t cid);
   void announce_latency(stage_device_id_t cid, double lmin, double lmean,
                         double lmax, uint32_t received, uint32_t lost);
-  void set_lobbyurl(const std::string& url) { lobbyurl = url; };
-  void set_roomname(const std::string& name) { roomname = name; };
+  void set_lobbyurl(const std::string& url)
+  {
+    std::lock_guard<std::mutex> lk(settings_mtx);
+    lobbyurl = url;
+  };
+  void set_roomname(const std::string& name)
+  {
+    std::lock_guard<std::mutex> lk(settings_mtx);
+    roomname = name;
+  };
 
 private:
   void jittermeasurement_service();
@@ -130,6 +138,7 @@ private:
   bool runsession = true;
   std::string roomname = "";
   std::string lobbyurl = "http://localhost";
+  std::mutex settings_mtx;
 
   std::queue<latreport_t> latfifo;
   std::mutex latfifomtx;
@@ -145,6 +154,7 @@ ov_server_t::ov_server_t(int portno_, int prio, const std::string& group_)
       roomname(addr2str(getipaddr().sin_addr) + ":" + std::to_string(portno)),
       lobbyurl("http://localhost"), serverjitter(-1), group(group_)
 {
+  settings_mtx.lock();
   endpoints.resize(255, ep_desc_t());
   // for(auto& ep:endpoints)
   //  memset(&ep,0,sizeof(ep));
@@ -155,6 +165,7 @@ ov_server_t::ov_server_t(int portno_, int prio, const std::string& group_)
   announce_thread = std::thread(&ov_server_t::announce_service, this);
   jittermeasurement_thread =
       std::thread(&ov_server_t::jittermeasurement_service, this);
+  settings_mtx.unlock();
 }
 
 ov_server_t::~ov_server_t()
@@ -229,39 +240,45 @@ void ov_server_t::announce_service()
           socket.set_secret(secret);
           isRoomEmpty = true;
         }
-        // Register at the lobby:
-        sprintf(httpGetRequest,
-                "?port=%d&name=%s&pin=%d&srvjit=%1.1f&grp=%s&version=%s",
-                portno, roomname.c_str(), secret, serverjitter, group.c_str(),
-                OVBOXVERSION);
-        serverjitter = 0;
-        std::string url(lobbyurl);
-        url += httpGetRequest;
-        if(isRoomEmpty) {
-          // Tell the frontend that the room is not in use:
-          url += "&empty=1";
-        }
-        std::string resp;
-        CURLcode response =
-            webCURL::curl_get_http_response(url, "room:room", resp);
-        // If the request is successful, reconnect in 6000 periods (10 minutes),
-        // otherwise retry in 500 periods (50 seconds):
-        if(response == CURLE_OK) {
-          if(resp.size() == 0) {
-            // expect empty response
-            announcementCounter = ANNOUNCEMENTPERIOD_SUCCESS_MS / PINGPERIODMS;
+        {
+          std::lock_guard<std::mutex> lk(settings_mtx);
+          // Register at the lobby:
+          sprintf(httpGetRequest,
+                  "?port=%d&name=%s&pin=%d&srvjit=%1.1f&grp=%s&version=%s",
+                  portno, roomname.c_str(), secret, serverjitter, group.c_str(),
+                  OVBOXVERSION);
+          serverjitter = 0;
+          std::string url(lobbyurl);
+          url += std::string(httpGetRequest);
+          if(isRoomEmpty) {
+            // Tell the frontend that the room is not in use:
+            url += "&empty=1";
+          }
+          std::string resp;
+          CURLcode response =
+              webCURL::curl_get_http_response(url, "room:room", resp);
+          // If the request is successful, reconnect in 6000 periods (10
+          // minutes), otherwise retry in 500 periods (50 seconds):
+          if(response == CURLE_OK) {
+            if(resp.size() == 0) {
+              // expect empty response
+              announcementCounter =
+                  ANNOUNCEMENTPERIOD_SUCCESS_MS / PINGPERIODMS;
+            } else {
+              // non-empty response, probably invalid server or similar:
+              std::cerr << "Error: invalid response from server:\n"
+                        << resp << std::endl;
+              announcementCounter =
+                  ANNOUNCEMENTPERIOD_FAILURE_MS / PINGPERIODMS;
+              std::cerr << "Request to " << url << " failed (invalid response)."
+                        << std::endl;
+            }
           } else {
-            // non-empty response, probably invalid server or similar:
-            std::cerr << "Error: invalid response from server:\n"
-                      << resp << std::endl;
             announcementCounter = ANNOUNCEMENTPERIOD_FAILURE_MS / PINGPERIODMS;
-            std::cerr << "Request to " << url << " failed (invalid response)."
+            std::cerr << "Request to " << url
+                      << " failed: " << curl_easy_strerror(response)
                       << std::endl;
           }
-        } else {
-          announcementCounter = ANNOUNCEMENTPERIOD_FAILURE_MS / PINGPERIODMS;
-          std::cerr << "Request to " << url
-                    << " failed: " << curl_easy_strerror(response) << std::endl;
         }
       }
       --announcementCounter;
@@ -343,7 +360,7 @@ void ov_server_t::ping_and_callerlist_service()
               {
                 // update public key, if available:
                 if(endpoints[epl].has_pubkey) {
-                  //DEBUG(bin2base64((uint8_t*)(endpoints[epl].pubkey),crypto_box_PUBLICKEYBYTES));
+                  // DEBUG(bin2base64((uint8_t*)(endpoints[epl].pubkey),crypto_box_PUBLICKEYBYTES));
                   size_t n = packmsg(buffer, BUFSIZE, secret, epl, PORT_PUBKEY,
                                      0, (const char*)(endpoints[epl].pubkey),
                                      crypto_box_PUBLICKEYBYTES);
