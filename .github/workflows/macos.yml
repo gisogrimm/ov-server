@@ -14,6 +14,6 @@ jobs:
     - name: Install submodules
       run: git submodule update --init --recursive
     - name: dependencies
-      run: brew install pkgconfig glibmm jack liblo libsndfile gtkmm3 eigen boost gsl fftw libsamplerate cpprestsdk nlohmann-json openssl coreutils libsoundio xerces-c jpeg libmatio libltc cunit
+      run: brew install pkgconfig glibmm jack liblo libsndfile gtkmm3 eigen boost gsl fftw libsamplerate cpprestsdk nlohmann-json openssl coreutils libsoundio xerces-c jpeg libmatio libltc cunit libsodium
     - name: make
       run: make
