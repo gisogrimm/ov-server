@@ -121,6 +121,8 @@ public:
     std::lock_guard<std::mutex> lk(settings_mtx);
     roomname = name;
   };
+  void start_services();
+  void stop_services();
 
 private:
   void jittermeasurement_service();
@@ -149,26 +151,40 @@ private:
 };
 
 ov_server_t::ov_server_t(int portno_, int prio, const std::string& group_)
-    : portno(portno_), prio(prio), secret(1234),
-      socket(secret, STAGE_ID_SERVER), runsession(true),
+    : portno(portno_), prio(prio), socket(secret, STAGE_ID_SERVER),
       roomname(addr2str(getipaddr().sin_addr) + ":" + std::to_string(portno)),
-      lobbyurl("http://localhost"), serverjitter(-1), group(group_)
+      group(group_)
 {
-  settings_mtx.lock();
   endpoints.resize(255, ep_desc_t());
   // for(auto& ep:endpoints)
   //  memset(&ep,0,sizeof(ep));
   socket.set_timeout_usec(100000);
   portno = socket.bind(portno);
-  logthread = std::thread(&ov_server_t::ping_and_callerlist_service, this);
-  quitthread = std::thread(&ov_server_t::quitwatch, this);
-  announce_thread = std::thread(&ov_server_t::announce_service, this);
-  jittermeasurement_thread =
-      std::thread(&ov_server_t::jittermeasurement_service, this);
-  settings_mtx.unlock();
 }
 
 ov_server_t::~ov_server_t()
+{
+  if(runsession)
+    stop_services();
+  socket.close();
+}
+
+void ov_server_t::start_services()
+{
+  if(runsession)
+    stop_services();
+  {
+    std::lock_guard<std::mutex> lk(settings_mtx);
+    runsession = true;
+    logthread = std::thread(&ov_server_t::ping_and_callerlist_service, this);
+    quitthread = std::thread(&ov_server_t::quitwatch, this);
+    announce_thread = std::thread(&ov_server_t::announce_service, this);
+    jittermeasurement_thread =
+        std::thread(&ov_server_t::jittermeasurement_service, this);
+  }
+}
+
+void ov_server_t::stop_services()
 {
   runsession = false;
   if(jittermeasurement_thread.joinable())
@@ -179,7 +195,6 @@ ov_server_t::~ov_server_t()
     quitthread.join();
   if(announce_thread.joinable())
     announce_thread.join();
-  socket.close();
 }
 
 void ov_server_t::quitwatch()
@@ -337,6 +352,7 @@ void ov_server_t::ping_and_callerlist_service()
       participantannouncementcnt = PARTICIPANTANNOUNCEPERIOD;
       for(stage_device_id_t cid = 0; cid != MAX_STAGE_ID; ++cid) {
         if(endpoints[cid].timeout) {
+          socket.send_pubkey(endpoints[cid].ep);
           for(stage_device_id_t epl = 0; epl != MAX_STAGE_ID; ++epl) {
             if(endpoints[epl].timeout) {
               // source (epl) and target (cid) endpoint are alive, send info of
@@ -601,7 +617,9 @@ int main(int argc, char** argv)
       if(usetcp) {
         tcp.bind(portno);
       }
+      rec.start_services();
       rec.srv();
+      rec.stop_services();
     }
     {
       std::lock_guard<std::mutex> lk(curlmtx);
