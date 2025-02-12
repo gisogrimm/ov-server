@@ -137,7 +137,7 @@ private:
 
   secret_t secret = 1234;
   ovbox_udpsocket_t socket;
-  bool runsession = true;
+  std::atomic<bool> runsession{false};
   std::string roomname = "";
   std::string lobbyurl = "http://localhost";
   std::mutex settings_mtx;
@@ -396,9 +396,10 @@ void ov_server_t::srv()
 {
   set_thread_prio(prio);
   char buffer[BUFSIZE];
+  char cmsg[BUFSIZE];
   log(portno, "Multiplex service started (version " OVBOXVERSION ")");
   endpoint_t sender_endpoint;
-  stage_device_id_t rcallerid;
+  stage_device_id_t sender_id = 0;
   port_t destport;
   while(runsession) {
     // n is the packed message lenght:
@@ -406,19 +407,35 @@ void ov_server_t::srv()
     // un is the unpacked message length:
     size_t un(BUFSIZE);
     sequence_t seq(0);
-    char* msg(socket.recv_sec_msg(buffer, n, un, rcallerid, destport, seq,
+    char* msg(socket.recv_sec_msg(buffer, n, un, sender_id, destport, seq,
                                   sender_endpoint));
-    if(msg) {
+    if(msg && (sender_id < MAX_STAGE_ID)) {
       // regular destination port, forward data:
       if(destport > MAXSPECIALPORT) {
-        for(stage_device_id_t ep = 0; ep != MAX_STAGE_ID; ++ep) {
-          if((ep != rcallerid) && (endpoints[ep].timeout > 0) &&
-             (!(endpoints[ep].mode & B_DONOTSEND)) &&
-             ((!(endpoints[ep].mode & B_PEER2PEER)) ||
-              (!(endpoints[rcallerid].mode & B_PEER2PEER))) &&
-             ((bool)(endpoints[ep].mode & B_RECEIVEDOWNMIX) ==
-              (bool)(endpoints[rcallerid].mode & B_SENDDOWNMIX))) {
-            socket.send(buffer, n, endpoints[ep].ep);
+        auto& src = endpoints[sender_id];
+        if(src.mode & B_ENCRYPTION) {
+          auto newlen = decryptmsg(cmsg, buffer, n, socket.recipient_public,
+                                   socket.recipient_secret);
+          memcpy(buffer, cmsg, newlen);
+          n = newlen;
+        }
+        for(stage_device_id_t target_id = 0; target_id != MAX_STAGE_ID;
+            ++target_id) {
+          auto& dest = endpoints[target_id];
+          if((target_id != sender_id) && (dest.timeout > 0) &&
+             (!(dest.mode & B_DONOTSEND)) &&
+             ((!(dest.mode & B_PEER2PEER)) || (!(src.mode & B_PEER2PEER))) &&
+             ((bool)(dest.mode & B_RECEIVEDOWNMIX) ==
+              (bool)(src.mode & B_SENDDOWNMIX))) {
+            char* send_msg = buffer;
+            size_t send_len = n;
+            // now check for encryption:
+            if((src.mode & B_ENCRYPTION) && (dest.mode & B_ENCRYPTION) &&
+               dest.has_pubkey) {
+              send_len = encryptmsg(cmsg, BUFSIZE, buffer, n, dest.pubkey);
+              send_msg = cmsg;
+            }
+            socket.send(send_msg, send_len, dest.ep);
           }
         }
       } else {
@@ -430,7 +447,7 @@ void ov_server_t::srv()
             stage_device_id_t sender_cid(*(sequence_t*)msg);
             sequence_t seq(*(sequence_t*)(&(msg[sizeof(stage_device_id_t)])));
             char ctmp[1024];
-            sprintf(ctmp, "sequence error %d sender %d %d", rcallerid,
+            sprintf(ctmp, "sequence error %d sender %d %d", sender_id,
                     sender_cid, seq);
             log(portno, ctmp);
           }
@@ -442,15 +459,15 @@ void ov_server_t::srv()
             {
               std::lock_guard<std::mutex> lk(latfifomtx);
               latfifo.push(
-                  latreport_t(rcallerid, data[0], data[2], data[3] - data[2]));
+                  latreport_t(sender_id, data[0], data[2], data[3] - data[2]));
             }
             char ctmp[1024];
             sprintf(ctmp,
                     "peerlat %d-%g min=%1.2fms, mean=%1.2fms, max=%1.2fms",
-                    rcallerid, data[0], data[1], data[2], data[3]);
+                    sender_id, data[0], data[1], data[2], data[3]);
             log(portno, ctmp);
             sprintf(ctmp, "packages %d-%g received=%g lost=%g (%1.2f%%)",
-                    rcallerid, data[0], data[4], data[5],
+                    sender_id, data[0], data[4], data[5],
                     100.0 * data[5] / (std::max(1.0, data[4] + data[5])));
             log(portno, ctmp);
           }
@@ -467,13 +484,13 @@ void ov_server_t::srv()
           // ping response:
           double tms(socket.get_pingtime(msg, un));
           if(tms > 0)
-            cid_setpingtime(rcallerid, tms);
+            cid_setpingtime(sender_id, tms);
         } break;
         case PORT_SETLOCALIP:
           // receive local IP address of peer:
           if(un == sizeof(endpoint_t)) {
             // endpoint_t* localep((endpoint_t*)msg);
-            cid_setlocalip(rcallerid, msg);
+            cid_setlocalip(sender_id, msg);
           }
           break;
         case PORT_REGISTER: {
@@ -485,10 +502,10 @@ void ov_server_t::srv()
             msg[un - 1] = 0;
             rver = msg;
           }
-          cid_register(rcallerid, (char*)(&sender_endpoint), seq, rver);
+          cid_register(sender_id, (char*)(&sender_endpoint), seq, rver);
         } break;
         case PORT_PUBKEY: {
-          cid_set_pubkey(rcallerid, msg, un);
+          cid_set_pubkey(sender_id, msg, un);
         } break;
         }
       }
