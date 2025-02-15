@@ -5,15 +5,19 @@ export FULLVERSION:=$(shell cd libov && ./get_version.sh)
 showver:
 	echo $(VERSION)
 
-BINARIES = ov-server
+BINARIES = ov-server testtcpsrv testtcpclient
 
-EXTERNALS = libcurl
+OBJ = 
+
+#EXTERNALS = jack liblo sndfile libcurl gsl samplerate fftw3f xerces-c
+EXTERNALS = libcurl xerces-c libsodium
 
 BUILD_BINARIES = $(patsubst %,build/%,$(BINARIES))
 BUILD_OBJ = $(patsubst %,build/%.o,$(OBJ))
 
+binaries: $(BUILD_OBJ)
 
-CXXFLAGS = -Wall -Wno-deprecated-declarations -std=c++11 -pthread	\
+CXXFLAGS = -Wall -Wno-deprecated-declarations -std=c++17 -pthread	\
 -ggdb -fno-finite-math-only
 
 CXXFLAGS += -DOVBOXVERSION="\"$(FULLVERSION)\""
@@ -71,6 +75,10 @@ endif
 
 CXXFLAGS += $(OSFLAG)
 
+LDLIBS += `pkg-config --libs $(EXTERNALS)`
+CXXFLAGS += `pkg-config --cflags $(EXTERNALS)`
+
+
 lib: libov/Makefile
 	$(MAKE) -C libov build libovserver
 
@@ -86,7 +94,7 @@ build: build/.directory
 
 binaries: $(BUILD_BINARIES)
 
-$(BUILD_BINARIES): libov/build/libovserver.a
+$(BUILD_BINARIES): libov/build/libovserver.a $(BUILD_OBJ)
 
 build/%: src/%.cc
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@
