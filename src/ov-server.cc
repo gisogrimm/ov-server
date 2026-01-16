@@ -566,7 +566,7 @@ int main(int argc, char** argv)
     std::string lobby("http://oldbox.orlandoviols.com");
     std::string group;
     bool usetcp = false;
-    const char* options = "p:qr:hvn:l:g:";
+    const char* options = "p:qr:hvn:l:g:t";
     struct option long_options[] = {{"rtprio", 1, 0, 'r'},
                                     {"quiet", 0, 0, 'q'},
                                     {"port", 1, 0, 'p'},
