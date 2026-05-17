@@ -1,5 +1,7 @@
 # ov-server
 
+This repository is now integrated into ov-client.
+
 This will be the repository for the audio relay server of the
 ov-client protocol (currently `roomservice` in the ovbox repository).
 
